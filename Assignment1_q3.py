@@ -4,8 +4,6 @@ import numpy as np
 from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
 
-# Q3 - Hybrid Images
-
 if not os.path.exists("Q3_outputs"):
     os.mkdir("Q3_outputs")
 
@@ -35,18 +33,12 @@ def gaussian_blur(img, k, sigma):
 
 
 def resize_float(img, shape):
-    # PIL mode 'F' handles float32 (and negative values), unlike normal 'L' resize
     pil = Image.fromarray(img.astype(np.float32), mode="F")
     resized = pil.resize((shape[1], shape[0]), Image.Resampling.BILINEAR)
     return np.array(resized, dtype=np.float64)
 
 
-# ---------------- building the two image pairs ----------------
 def draw_face(happy, size=320):
-    # mouth/eyebrows use the same bounding boxes for both expressions, only
-    # the curve direction/tilt changes - otherwise the two mouths end up in
-    # slightly different spots and the hybrid shows two overlapping mouths
-    # instead of one that changes with viewing distance
     img = Image.new("L", (size, size), color=210)
     d = ImageDraw.Draw(img)
     d.ellipse([40, 40, size - 40, size - 40], outline=0, fill=225, width=4)
@@ -66,7 +58,6 @@ def draw_face(happy, size=320):
 
 face_a = draw_face(happy=True)
 face_b_true = draw_face(happy=False)
-# shift face_b on purpose so there's an actual alignment problem to solve
 face_b_shifted = np.roll(np.roll(face_b_true, 8, axis=0), -6, axis=1)
 
 Image.fromarray(face_a.astype(np.uint8)).save("Q3_outputs/face_a.png")
@@ -105,7 +96,6 @@ pairs = {
 }
 
 
-# ---------------- spatial-domain hybrid ----------------
 def hybrid_spatial(img1, img2, k, sigma, alpha=1.0, beta=1.0):
     low1 = gaussian_blur(img1, k, sigma)
     low2 = gaussian_blur(img2, k, sigma)
@@ -117,7 +107,7 @@ def hybrid_spatial(img1, img2, k, sigma, alpha=1.0, beta=1.0):
 for label, (img1, img2) in pairs.items():
     fig, axes = plt.subplots(1, 3, figsize=(13, 4.5))
     for ax, sigma in zip(axes, [3, 6, 10]):
-        k = int(sigma * 4) | 1  # odd kernel, roughly 4 sigma wide
+        k = int(sigma * 4) | 1
         hyb, _, _ = hybrid_spatial(img1, img2, k, sigma)
         ax.imshow(np.clip(hyb, 0, 255), cmap="gray")
         ax.set_title("sigma=%d, k=%d" % (sigma, k))
@@ -127,10 +117,11 @@ for label, (img1, img2) in pairs.items():
     plt.savefig("Q3_outputs/hybrid_sigmas_" + label + ".png")
     plt.close()
 
-# sigma=6 looked like the best balance for both pairs (sigma=3 barely
-# changes with distance, sigma=10 loses too much of the low-freq image),
-# so that's the one used from here on
 BEST_K, BEST_SIGMA = 25, 6
+print("\nChosen params: k=%d, sigma=%d" % (BEST_K, BEST_SIGMA))
+print("Reasoning: sigma=6 looked like the best balance for both pairs (sigma=3")
+print("barely changes with distance, sigma=10 loses too much of the low-freq image),")
+print("so that's the one used from here on.")
 
 hybrid_cache = {}
 for label, (img1, img2) in pairs.items():
@@ -158,11 +149,7 @@ for label, (img1, img2) in pairs.items():
     Image.fromarray(np.clip(hyb, 0, 255).astype(np.uint8)).save("Q3_outputs/hybrid_" + label + ".png")
 
 
-# ---------------- frequency-domain version, compared with spatial ----------------
 def fft_lowpass(img, sigma):
-    # FT of a gaussian with std sigma (pixels) is a gaussian with std
-    # N/(2*pi*sigma) in the DFT index space - this is what actually makes
-    # this match the spatial-domain gaussian blur of the same sigma
     h, w = img.shape
     F = np.fft.fftshift(np.fft.fft2(img))
     cy, cx = h // 2, w // 2
@@ -203,7 +190,6 @@ for label, (img1, img2) in pairs.items():
     plt.close()
 
 
-# ---------------- gaussian / laplacian pyramids + blending ----------------
 def build_gaussian_pyramid(img, levels, blur_fn):
     pyr = [img]
     cur = img
@@ -257,9 +243,8 @@ for label, (img1, img2) in pairs.items():
     h, w = img1.shape
     mask = np.zeros((h, w))
     mask[:, : w // 2] = 1.0
-    mask = gaussian_blur(mask, 31, 10)  # soften the seam
+    mask = gaussian_blur(mask, 31, 10)
 
-    # -------- gaussian-based laplacian pyramid blend --------
     gpA = build_gaussian_pyramid(img1, LEVELS, plain_blur)
     gpB = build_gaussian_pyramid(img2, LEVELS, plain_blur)
     gpM = build_gaussian_pyramid(mask, LEVELS, plain_blur)
@@ -272,7 +257,6 @@ for label, (img1, img2) in pairs.items():
     recon_error = np.mean((check - img1) ** 2)
     print("%-10s laplacian-pyramid reconstruction MSE (sanity check): %.5f" % (label, recon_error))
 
-    # -------- bilateral-based laplacian pyramid blend --------
     gpA_bi = build_gaussian_pyramid(img1, LEVELS, bilateral_blur)
     gpB_bi = build_gaussian_pyramid(img2, LEVELS, bilateral_blur)
     lapA_bi = build_laplacian_pyramid(gpA_bi)
@@ -300,25 +284,24 @@ for label, (img1, img2) in pairs.items():
     Image.fromarray(blended_bilateral.astype(np.uint8)).save("Q3_outputs/blend_bilateral_" + label + ".png")
 
 
-# - alignment matters a lot: the face pair only reads as one coherent face
-#   because the eyes/mouth line up after correcting the (8,-6) shift. a
-#   misaligned high-frequency layer just looks like a ghosting artefact on
-#   top of the low-frequency image instead of a clean hybrid.
-# - the cutoff (sigma) controls how the two images trade off: too small a
-#   sigma and the "low-frequency" image still has sharp detail fighting
-#   with the high-frequency layer; too large and the low-frequency image
-#   turns into a featureless blob and the high-frequency layer dominates
-#   at every viewing distance.
-# - spatial and frequency domain filtering give visually near-identical
-#   results once the cutoffs are matched, which makes sense since gaussian
-#   convolution is just multiplication by a gaussian in the frequency
-#   domain. frequency domain is faster for large kernels since FFT-based
-#   filtering doesn't scale with kernel size the way spatial convolution
-#   does.
-# - plain gaussian-pyramid blending gives a smooth transition but can blur
-#   edges that cross the seam. building the pyramid with a bilateral
-#   filter instead keeps edges sharper going into the blend since it
-#   avoids smoothing across strong intensity boundaries, at the cost of
-#   being slower to compute.
-print("\nSee comments at the bottom for the discussion on alignment / frequency separation.")
-print("All outputs saved in the Q3_outputs folder.")
+print("\nDiscussion:")
+print("Alignment matters a lot: the face pair only reads as one coherent face")
+print("because the eyes/mouth line up after correcting the (8,-6) shift. A")
+print("misaligned high-frequency layer just looks like a ghosting artefact on top")
+print("of the low-frequency image instead of a clean hybrid.")
+print("The cutoff (sigma) controls how the two images trade off: too small a sigma")
+print("and the low-frequency image still has sharp detail fighting with the")
+print("high-frequency layer; too large and the low-frequency image turns into a")
+print("featureless blob and the high-frequency layer dominates at every viewing")
+print("distance.")
+print("Spatial and frequency domain filtering give visually near-identical results")
+print("once the cutoffs are matched, which makes sense since gaussian convolution")
+print("is just multiplication by a gaussian in the frequency domain. Frequency")
+print("domain is faster for large kernels since FFT-based filtering doesn't scale")
+print("with kernel size the way spatial convolution does.")
+print("Plain gaussian-pyramid blending gives a smooth transition but can blur edges")
+print("that cross the seam. Building the pyramid with a bilateral filter instead")
+print("keeps edges sharper going into the blend since it avoids smoothing across")
+print("strong intensity boundaries, at the cost of being slower to compute.")
+
+print("\nAll outputs saved in the Q3_outputs folder.")

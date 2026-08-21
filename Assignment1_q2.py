@@ -3,8 +3,6 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 
-# Q2 - Image Smoothing
-# fine_img has lots of texture/detail, smooth_img has large flat regions
 fine_img = np.array(Image.open("cameraman.png").convert("L"), dtype=np.float64)
 smooth_img = np.array(Image.open("moon.png").convert("L"), dtype=np.float64)
 print("fine_img:", fine_img.shape, " smooth_img:", smooth_img.shape)
@@ -58,7 +56,6 @@ def box_filter(img, k):
 
 
 def weighted_avg_filter(img, k):
-    # weight falls off with distance from the center pixel, unlike a flat box
     c = (k - 1) / 2
     kernel = np.zeros((k, k))
     for i in range(k):
@@ -127,14 +124,12 @@ print("\n%-20s %-10s %-6s %-10s %-10s" % ("Image", "Filter", "K", "MSE", "PSNR")
 for row in table:
     print("%-20s %-10s %-6d %-10.3f %-10.3f" % row)
 
-# best filter+kernel for each noise type, based on PSNR
 for img_label in images:
     rows = [r for r in table if r[0] == img_label]
     best = max(rows, key=lambda r: r[4])
     print("Best for %-20s -> %-10s k=%d  PSNR=%.3f" % (img_label, best[1], best[2], best[4]))
 
 
-# ---------------- abs-difference maps D = |noisy - filtered| ----------------
 for img_label, (clean, noisy) in images.items():
     fig, axes = plt.subplots(len(filters), len(kernel_sizes), figsize=(11, 12))
     fig.suptitle("D(x,y) = |noisy - filtered|  --  " + img_label)
@@ -151,7 +146,6 @@ for img_label, (clean, noisy) in images.items():
     plt.close()
 
 
-# ---------------- visual comparison grid ----------------
 for img_label, (clean, noisy) in images.items():
     fig, axes = plt.subplots(len(filters), len(kernel_sizes) + 1, figsize=(14, 12))
     fig.suptitle("Filtered outputs -- " + img_label)
@@ -170,7 +164,6 @@ for img_label, (clean, noisy) in images.items():
     plt.close()
 
 
-# ---------------- mixed noise image (left = salt&pepper, right = gaussian) ----------------
 h, w = fine_img.shape
 mixed_clean = fine_img.copy()
 mixed_noisy = mixed_clean.copy()
@@ -188,7 +181,6 @@ for fname, ffunc in filters.items():
     psnr_val = calc_psnr(mixed_clean, out)
     print("%-10s MSE=%-10.3f PSNR=%-10.3f" % (fname, mse_val, psnr_val))
 
-# region-wise: median on the salt&pepper half, gaussian on the gaussian half
 region_wise = mixed_noisy.copy()
 region_wise[:, : w // 2] = median_filter(mixed_noisy[:, : w // 2], k_mix)
 region_wise[:, w // 2 :] = gaussian_filter(mixed_noisy[:, w // 2 :], k_mix)
@@ -211,22 +203,21 @@ plt.tight_layout()
 plt.savefig("Q2_outputs/region_wise_comparison.png")
 plt.close()
 
-# kernel size 3,5,7 chosen as small/medium/large, gaussian sigma = k/3 so the
-# blur radius scales with kernel size
-# - box filter is fast but blurs edges the same way in every direction and
-#   does nothing special about outliers, so it doesn't clean salt & pepper
-#   noise very well
-# - weighted-average is a softer version of box, a bit better at keeping
-#   edges but still gets dragged around by extreme salt & pepper values
-# - gaussian filter is good for gaussian noise since it's a smooth weighted
-#   average, but again doesn't handle salt & pepper impulses well
-# - median filter is the clear winner for salt & pepper since it just
-#   throws out extreme outlier values instead of averaging them in, but it
-#   is a bit worse than gaussian for pure gaussian noise
-# - increasing kernel size removes more noise but blurs more detail/edges
-#   in every filter, so there's a trade-off, k=5 is usually a decent middle
-#   ground for these images
-# - on the mixed image no single filter is best everywhere, which is why
-#   the region-wise version above beats every single global filter
-print("\nSee comments at the bottom for filter comparison / kernel size discussion.")
-print("All outputs saved in the Q2_outputs folder.")
+print("\nParameter choices: kernel sizes 3, 5, 7 cover small/medium/large; gaussian")
+print("sigma = k/3 so the blur radius scales with kernel size.")
+print("\nDiscussion:")
+print("Box filter is fast but blurs edges the same way in every direction and does")
+print("nothing special about outliers, so it doesn't clean salt & pepper noise very")
+print("well. Weighted-average is a softer version of box, a bit better at keeping")
+print("edges but still gets dragged around by extreme salt & pepper values. Gaussian")
+print("filter is good for gaussian noise since it's a smooth weighted average, but")
+print("again doesn't handle salt & pepper impulses well. Median filter is the clear")
+print("winner for salt & pepper since it just throws out extreme outlier values")
+print("instead of averaging them in, but it is a bit worse than gaussian for pure")
+print("gaussian noise. Increasing kernel size removes more noise but blurs more")
+print("detail/edges in every filter, so there's a trade-off -- k=5 is usually a decent")
+print("middle ground for these images. On the mixed image no single filter is best")
+print("everywhere, which is why the region-wise version above beats every single")
+print("global filter.")
+
+print("\nAll outputs saved in the Q2_outputs folder.")

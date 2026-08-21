@@ -12,7 +12,6 @@ if not os.path.exists("Q1_outputs"):
 
 
 def downsample(image, factor):
-    # no anti-aliasing on purpose, so its effect shows up in the reconstruction
     return image[::factor, ::factor]
 
 
@@ -25,7 +24,6 @@ Image.fromarray(img_128.astype(np.uint8)).save("Q1_outputs/down_128.png")
 
 
 def nn_resize(small_img, new_h, new_w):
-    # manual nearest neighbour, no PIL/cv2 resize call here
     old_h, old_w = small_img.shape
     out = np.zeros((new_h, new_w))
     for i in range(new_h):
@@ -67,8 +65,6 @@ def calc_psnr(img1, img2):
 
 
 def edge_map(image):
-    # quick gradient magnitude, just for the edge-preservation comparison
-    # (proper Sobel/LoG/Canny is done in Q4)
     gx = np.zeros_like(image)
     gy = np.zeros_like(image)
     gx[:, :-1] = image[:, 1:] - image[:, :-1]
@@ -173,17 +169,15 @@ plt.close()
 for name, rec in results:
     Image.fromarray(np.clip(rec, 0, 255).astype(np.uint8)).save("Q1_outputs/recon_" + name + ".png")
 
-# - going from 512 -> 128 loses a lot more detail than 512 -> 256, so no
-#   matter which interpolation method is used, MSE goes up and PSNR goes
-#   down when starting from the smaller image. edge error also increases
-#   a lot more, since fine edges just aren't there anymore after that much
-#   downsampling.
-# - nearest neighbour gives blocky/jagged edges, it's the simplest but
-#   usually the worst in terms of MSE/PSNR.
-# - bilinear blurs things out a bit more, so edges are softer but overall
-#   error is usually a bit better than NN.
-# - bicubic generally gives the best PSNR and keeps edges looking closer
-#   to the original, since it uses a bigger neighbourhood of pixels.
-print("\nSee code comments at the bottom for the discussion on downsampling")
-print("factor vs reconstruction quality / edge preservation.")
+print("\nDiscussion:")
+print("Going from 512 -> 128 loses a lot more detail than 512 -> 256, so no matter")
+print("which interpolation method is used, MSE goes up and PSNR goes down when")
+print("starting from the smaller image. Edge error also increases a lot more, since")
+print("fine edges just aren't there anymore after that much downsampling.")
+print("Nearest neighbour gives blocky/jagged edges, it's the simplest but usually the")
+print("worst in terms of MSE/PSNR. Bilinear blurs things out a bit more, so edges are")
+print("softer but overall error is usually a bit better than NN. Bicubic generally")
+print("gives the best PSNR and keeps edges looking closer to the original, since it")
+print("uses a bigger neighbourhood of pixels.")
+
 print("\nAll outputs saved in the Q1_outputs folder.")
